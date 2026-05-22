@@ -1,11 +1,11 @@
 ---
-page_title: "ansible_vault_file EphemeralResource - terraform-provider-ansible"
+page_title: "ansible_vault EphemeralResource - terraform-provider-ansible"
 subcategory: ""
 description: |-
   Decrypts an ansible-vault encrypted file without writing anything to state.
 ---
 
-# ansible_vault_file (EphemeralResource)
+# ansible_vault (EphemeralResource)
 
 Decrypts an ansible-vault encrypted file and exposes the plaintext content as a sensitive computed attribute. Nothing is written to Terraform state.
 
@@ -13,15 +13,15 @@ Requires Terraform 1.10 or later. Ephemeral resources are ideal for secrets that
 
 ## Example Usage
 ```terraform
-ephemeral "ansible_vault_file" "secret" {
-  path               = "${path.module}/secrets/db_password.yml"
+ephemeral "ansible_vault" "secret" {
+  vault_file          = "${path.module}/secrets/db_password.yml"
   vault_password_file = "${path.module}/.vault_pass"
 }
 
 # Use the decrypted content in another resource without it appearing in state.
 resource "aws_secretsmanager_secret_version" "db" {
   secret_id     = aws_secretsmanager_secret.db.id
-  secret_string = ephemeral.ansible_vault_file.secret.content
+  secret_string = ephemeral.ansible_vault.secret.yaml
 }
 ```
 
@@ -30,7 +30,7 @@ resource "aws_secretsmanager_secret_version" "db" {
 
 ### Required
 
-- `path` (String) Path to the ansible-vault encrypted file.
+- `vault_file` (String) Path to the ansible-vault encrypted file.
 - `vault_password_file` (String, Sensitive) Path to the file containing the vault password.
 
 ### Optional
@@ -39,4 +39,4 @@ resource "aws_secretsmanager_secret_version" "db" {
 
 ### Read-Only
 
-- `content` (String, Sensitive) Decrypted content of the vault file.
+- `yaml` (String, Sensitive) Decrypted content of the vault file.

@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	ephemeralschema "github.com/hashicorp/terraform-plugin-framework/ephemeral/schema"
@@ -9,11 +10,33 @@ import (
 )
 
 var _ ephemeral.EphemeralResource = (*VaultStringEphemeralResource)(nil)
+var _ ephemeral.EphemeralResourceWithConfigure = (*VaultStringEphemeralResource)(nil)
 
-type VaultStringEphemeralResource struct{}
+type VaultStringEphemeralResource struct {
+	runner VaultRunner
+}
 
 func NewVaultStringEphemeralResource() ephemeral.EphemeralResource {
-	return &VaultStringEphemeralResource{}
+	return &VaultStringEphemeralResource{runner: DefaultVaultRunner}
+}
+
+func (e *VaultStringEphemeralResource) Configure(
+	_ context.Context,
+	req ephemeral.ConfigureRequest,
+	resp *ephemeral.ConfigureResponse,
+) {
+	if req.ProviderData == nil {
+		return
+	}
+	runner, ok := req.ProviderData.(VaultRunner)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected ProviderData type",
+			fmt.Sprintf("expected VaultRunner, got %T", req.ProviderData),
+		)
+		return
+	}
+	e.runner = runner
 }
 
 func (e *VaultStringEphemeralResource) Metadata(
@@ -69,11 +92,12 @@ func (e *VaultStringEphemeralResource) Open(ctx context.Context, req ephemeral.O
 		return
 	}
 
-	plaintext, diags := decryptVaultString(
+	plaintext, diags := decryptVaultStringWith(
 		ctx,
 		config.Content.ValueString(),
 		config.VaultPasswordFile.ValueString(),
 		config.VaultID.ValueString(),
+		e.runner,
 	)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {

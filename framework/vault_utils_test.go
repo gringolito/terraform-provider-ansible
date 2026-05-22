@@ -10,6 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type vaultRunnerFunc func(ctx context.Context, passwordFile, vaultID, vaultFile string) (string, diag.Diagnostics)
+
+func (f vaultRunnerFunc) View(ctx context.Context, passwordFile, vaultID, vaultFile string) (string, diag.Diagnostics) {
+	return f(ctx, passwordFile, vaultID, vaultFile)
+}
+
 // --- buildVaultViewArgs ---
 
 func TestBuildVaultViewArgs_withoutVaultID(t *testing.T) {
@@ -28,12 +34,12 @@ func TestDecryptVaultStringWith_passesEncryptedContentToRunner(t *testing.T) {
 	const encrypted = "$ANSIBLE_VAULT;1.1;AES256\nfakedata"
 
 	var receivedFile string
-	runner := func(_ context.Context, _, _, vaultFile string) (string, diag.Diagnostics) {
+	runner := vaultRunnerFunc(func(_ context.Context, _, _, vaultFile string) (string, diag.Diagnostics) {
 		b, err := os.ReadFile(vaultFile)
 		require.NoError(t, err)
 		receivedFile = string(b)
 		return "plaintext", diag.Diagnostics{}
-	}
+	})
 
 	got, diags := decryptVaultStringWith(context.Background(), encrypted, "/pass", "", runner)
 	assert.False(t, diags.HasError())
@@ -43,11 +49,11 @@ func TestDecryptVaultStringWith_passesEncryptedContentToRunner(t *testing.T) {
 
 func TestDecryptVaultStringWith_forwardsPasswordFileAndVaultID(t *testing.T) {
 	var gotPass, gotID string
-	runner := func(_ context.Context, passwordFile, vaultID, _ string) (string, diag.Diagnostics) {
+	runner := vaultRunnerFunc(func(_ context.Context, passwordFile, vaultID, _ string) (string, diag.Diagnostics) {
 		gotPass = passwordFile
 		gotID = vaultID
 		return "ok", diag.Diagnostics{}
-	}
+	})
 
 	_, diags := decryptVaultStringWith(context.Background(), "enc", "/my/pass", "prod", runner)
 	assert.False(t, diags.HasError())
@@ -57,10 +63,10 @@ func TestDecryptVaultStringWith_forwardsPasswordFileAndVaultID(t *testing.T) {
 
 func TestDecryptVaultStringWith_tempFileRemovedAfterReturn(t *testing.T) {
 	var capturedPath string
-	runner := func(_ context.Context, _, _, vaultFile string) (string, diag.Diagnostics) {
+	runner := vaultRunnerFunc(func(_ context.Context, _, _, vaultFile string) (string, diag.Diagnostics) {
 		capturedPath = vaultFile
 		return "ok", diag.Diagnostics{}
-	}
+	})
 
 	_, diags := decryptVaultStringWith(context.Background(), "enc", "/pass", "", runner)
 	assert.False(t, diags.HasError())
@@ -71,11 +77,11 @@ func TestDecryptVaultStringWith_tempFileRemovedAfterReturn(t *testing.T) {
 }
 
 func TestDecryptVaultStringWith_propagatesRunnerError(t *testing.T) {
-	runner := func(_ context.Context, _, _, _ string) (string, diag.Diagnostics) {
+	runner := vaultRunnerFunc(func(_ context.Context, _, _, _ string) (string, diag.Diagnostics) {
 		var d diag.Diagnostics
 		d.AddError("decrypt failed", "bad password")
 		return "", d
-	}
+	})
 
 	_, diags := decryptVaultStringWith(context.Background(), "enc", "/pass", "", runner)
 	assert.True(t, diags.HasError())

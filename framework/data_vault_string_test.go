@@ -1,46 +1,83 @@
-package framework
+package framework_test
 
 import (
-	"context"
+	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestVaultStringDataSource_Metadata(t *testing.T) {
-	ds := NewVaultStringDataSource()
-	var resp datasource.MetadataResponse
-	ds.Metadata(context.Background(), datasource.MetadataRequest{ProviderTypeName: "ansible"}, &resp)
-	assert.Equal(t, "ansible_vault_string", resp.TypeName)
+func TestVaultStringDataSource_decryptsPlaintext(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: ansibleVaultProviderFactories(okRunner("supersecret")),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+data "ansible_vault_string" "test" {
+  content             = "$ANSIBLE_VAULT;1.1;AES256\nfakedata"
+  vault_password_file = "/fake/pass"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("data.ansible_vault_string.test", "plaintext", "supersecret"),
+				),
+			},
+		},
+	})
 }
 
-func TestVaultStringDataSource_Schema(t *testing.T) {
-	ds := &VaultStringDataSource{}
-	var resp datasource.SchemaResponse
-	ds.Schema(context.Background(), datasource.SchemaRequest{}, &resp)
-	require.Empty(t, resp.Diagnostics)
+func TestVaultStringDataSource_withVaultID(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: ansibleVaultProviderFactories(okRunner("db_password")),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+data "ansible_vault_string" "test" {
+  content             = "$ANSIBLE_VAULT;1.1;AES256\nfakedata"
+  vault_password_file = "/fake/pass"
+  vault_id            = "prod"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("data.ansible_vault_string.test", "plaintext", "db_password"),
+				),
+			},
+		},
+	})
+}
 
-	attrs := resp.Schema.Attributes
+func TestVaultStringDataSource_propagatesDecryptError(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: ansibleVaultProviderFactories(errRunner("ansible-vault view failed", "ERROR! Decryption failed (no vault secrets would decrypt)")),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+data "ansible_vault_string" "test" {
+  content             = "$ANSIBLE_VAULT;1.1;AES256\nfakedata"
+  vault_password_file = "/fake/wrong-pass"
+}`,
+				ExpectError: regexp.MustCompile(`ansible-vault view failed`),
+			},
+		},
+	})
+}
 
-	content := attrs["content"]
-	require.NotNil(t, content)
-	assert.True(t, content.IsRequired(), "content must be required")
-	assert.False(t, content.IsComputed(), "content must not be computed")
-	assert.False(t, content.IsSensitive(), "content must not be sensitive")
-
-	passFile := attrs["vault_password_file"]
-	require.NotNil(t, passFile)
-	assert.True(t, passFile.IsRequired(), "vault_password_file must be required")
-	assert.True(t, passFile.IsSensitive(), "vault_password_file must be sensitive")
-
-	vaultID := attrs["vault_id"]
-	require.NotNil(t, vaultID)
-	assert.True(t, vaultID.IsOptional(), "vault_id must be optional")
-
-	plaintext := attrs["plaintext"]
-	require.NotNil(t, plaintext)
-	assert.True(t, plaintext.IsComputed(), "plaintext must be computed")
-	assert.True(t, plaintext.IsSensitive(), "plaintext must be sensitive")
+func TestVaultStringDataSource_computedPlaintextWithInputsInState(t *testing.T) {
+	// Terraform always writes config attributes into data source state (it uses them
+	// to detect when a re-read is needed). Only `plaintext` is provider-computed; the
+	// other attributes are echoed from config. For portability across machines use
+	// the ansible_vault_string ephemeral resource instead, which stores nothing.
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: ansibleVaultProviderFactories(okRunner("value")),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+data "ansible_vault_string" "test" {
+  content             = "$ANSIBLE_VAULT;1.1;AES256\nfakedata"
+  vault_password_file = "/fake/pass"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("data.ansible_vault_string.test", "plaintext", "value"),
+				),
+			},
+		},
+	})
 }

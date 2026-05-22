@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -9,11 +10,33 @@ import (
 )
 
 var _ datasource.DataSource = (*VaultStringDataSource)(nil)
+var _ datasource.DataSourceWithConfigure = (*VaultStringDataSource)(nil)
 
-type VaultStringDataSource struct{}
+type VaultStringDataSource struct {
+	runner VaultRunner
+}
 
 func NewVaultStringDataSource() datasource.DataSource {
-	return &VaultStringDataSource{}
+	return &VaultStringDataSource{runner: DefaultVaultRunner}
+}
+
+func (d *VaultStringDataSource) Configure(
+	_ context.Context,
+	req datasource.ConfigureRequest,
+	resp *datasource.ConfigureResponse,
+) {
+	if req.ProviderData == nil {
+		return
+	}
+	runner, ok := req.ProviderData.(VaultRunner)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected ProviderData type",
+			fmt.Sprintf("expected VaultRunner, got %T", req.ProviderData),
+		)
+		return
+	}
+	d.runner = runner
 }
 
 func (d *VaultStringDataSource) Metadata(
@@ -29,10 +52,6 @@ type vaultStringConfigModel struct {
 	VaultPasswordFile types.String `tfsdk:"vault_password_file"`
 	VaultID           types.String `tfsdk:"vault_id"`
 	Plaintext         types.String `tfsdk:"plaintext"`
-}
-
-type vaultStringStateModel struct {
-	Plaintext types.String `tfsdk:"plaintext"`
 }
 
 func (d *VaultStringDataSource) Schema(
@@ -72,13 +91,12 @@ func (d *VaultStringDataSource) Read(ctx context.Context, req datasource.ReadReq
 		return
 	}
 
-	plaintext, diags := decryptVaultString(ctx, config.Content.ValueString(), config.VaultPasswordFile.ValueString(), config.VaultID.ValueString())
+	plaintext, diags := decryptVaultStringWith(ctx, config.Content.ValueString(), config.VaultPasswordFile.ValueString(), config.VaultID.ValueString(), d.runner)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &vaultStringStateModel{
-		Plaintext: types.StringValue(plaintext),
-	})...)
+	config.Plaintext = types.StringValue(plaintext)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
 }

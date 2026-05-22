@@ -2,40 +2,59 @@ package framework
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-var _ datasource.DataSource = (*VaultFileDataSource)(nil)
+var _ datasource.DataSource = (*VaultDataSource)(nil)
+var _ datasource.DataSourceWithConfigure = (*VaultDataSource)(nil)
 
-type VaultFileDataSource struct{}
-
-func NewVaultFileDataSource() datasource.DataSource {
-	return &VaultFileDataSource{}
+type VaultDataSource struct {
+	runner VaultRunner
 }
 
-func (d *VaultFileDataSource) Metadata(
+func NewVaultDataSource() datasource.DataSource {
+	return &VaultDataSource{runner: DefaultVaultRunner}
+}
+
+func (d *VaultDataSource) Configure(
+	_ context.Context,
+	req datasource.ConfigureRequest,
+	resp *datasource.ConfigureResponse,
+) {
+	if req.ProviderData == nil {
+		return
+	}
+	runner, ok := req.ProviderData.(VaultRunner)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected ProviderData type",
+			fmt.Sprintf("expected VaultRunner, got %T", req.ProviderData),
+		)
+		return
+	}
+	d.runner = runner
+}
+
+func (d *VaultDataSource) Metadata(
 	_ context.Context,
 	req datasource.MetadataRequest,
 	resp *datasource.MetadataResponse,
 ) {
-	resp.TypeName = req.ProviderTypeName + "_vault_file"
+	resp.TypeName = req.ProviderTypeName + "_vault"
 }
 
-type vaultFileConfigModel struct {
-	Path              types.String `tfsdk:"path"`
+type vaultConfigModel struct {
+	VaultFile         types.String `tfsdk:"vault_file"`
 	VaultPasswordFile types.String `tfsdk:"vault_password_file"`
 	VaultID           types.String `tfsdk:"vault_id"`
-	Content           types.String `tfsdk:"content"`
+	Yaml              types.String `tfsdk:"yaml"`
 }
 
-type vaultFileStateModel struct {
-	Content types.String `tfsdk:"content"`
-}
-
-func (d *VaultFileDataSource) Schema(
+func (d *VaultDataSource) Schema(
 	_ context.Context,
 	_ datasource.SchemaRequest,
 	resp *datasource.SchemaResponse,
@@ -43,7 +62,7 @@ func (d *VaultFileDataSource) Schema(
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Decrypts an ansible-vault encrypted file and exposes its content.",
 		Attributes: map[string]schema.Attribute{
-			"path": schema.StringAttribute{
+			"vault_file": schema.StringAttribute{
 				MarkdownDescription: "Path to the ansible-vault encrypted file.",
 				Required:            true,
 			},
@@ -56,7 +75,7 @@ func (d *VaultFileDataSource) Schema(
 				MarkdownDescription: "Vault ID label used with `--vault-id <id>@<vault_password_file>`.",
 				Optional:            true,
 			},
-			"content": schema.StringAttribute{
+			"yaml": schema.StringAttribute{
 				MarkdownDescription: "Decrypted content of the vault file.",
 				Computed:            true,
 				Sensitive:           true,
@@ -65,25 +84,24 @@ func (d *VaultFileDataSource) Schema(
 	}
 }
 
-func (d *VaultFileDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	var config vaultFileConfigModel
+func (d *VaultDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var config vaultConfigModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	content, diags := runAnsibleVaultView(
+	yaml, diags := d.runner.View(
 		ctx,
 		config.VaultPasswordFile.ValueString(),
 		config.VaultID.ValueString(),
-		config.Path.ValueString(),
+		config.VaultFile.ValueString(),
 	)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &vaultFileStateModel{
-		Content: types.StringValue(content),
-	})...)
+	config.Yaml = types.StringValue(yaml)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
 }

@@ -2,36 +2,59 @@ package framework
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	ephemeralschema "github.com/hashicorp/terraform-plugin-framework/ephemeral/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-var _ ephemeral.EphemeralResource = (*VaultFileEphemeralResource)(nil)
+var _ ephemeral.EphemeralResource = (*VaultEphemeralResource)(nil)
+var _ ephemeral.EphemeralResourceWithConfigure = (*VaultEphemeralResource)(nil)
 
-type VaultFileEphemeralResource struct{}
-
-func NewVaultFileEphemeralResource() ephemeral.EphemeralResource {
-	return &VaultFileEphemeralResource{}
+type VaultEphemeralResource struct {
+	runner VaultRunner
 }
 
-func (e *VaultFileEphemeralResource) Metadata(
+func NewVaultEphemeralResource() ephemeral.EphemeralResource {
+	return &VaultEphemeralResource{runner: DefaultVaultRunner}
+}
+
+func (e *VaultEphemeralResource) Configure(
+	_ context.Context,
+	req ephemeral.ConfigureRequest,
+	resp *ephemeral.ConfigureResponse,
+) {
+	if req.ProviderData == nil {
+		return
+	}
+	runner, ok := req.ProviderData.(VaultRunner)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected ProviderData type",
+			fmt.Sprintf("expected VaultRunner, got %T", req.ProviderData),
+		)
+		return
+	}
+	e.runner = runner
+}
+
+func (e *VaultEphemeralResource) Metadata(
 	_ context.Context,
 	req ephemeral.MetadataRequest,
 	resp *ephemeral.MetadataResponse,
 ) {
-	resp.TypeName = req.ProviderTypeName + "_vault_file"
+	resp.TypeName = req.ProviderTypeName + "_vault"
 }
 
-type vaultFileEphemeralModel struct {
-	Path              types.String `tfsdk:"path"`
+type vaultEphemeralModel struct {
+	VaultFile         types.String `tfsdk:"vault_file"`
 	VaultPasswordFile types.String `tfsdk:"vault_password_file"`
 	VaultID           types.String `tfsdk:"vault_id"`
-	Content           types.String `tfsdk:"content"`
+	Yaml              types.String `tfsdk:"yaml"`
 }
 
-func (e *VaultFileEphemeralResource) Schema(
+func (e *VaultEphemeralResource) Schema(
 	_ context.Context,
 	_ ephemeral.SchemaRequest,
 	resp *ephemeral.SchemaResponse,
@@ -40,7 +63,7 @@ func (e *VaultFileEphemeralResource) Schema(
 		MarkdownDescription: "Decrypts an ansible-vault encrypted file and exposes its content. " +
 			"Unlike the data source variant, this ephemeral resource writes nothing to state.",
 		Attributes: map[string]ephemeralschema.Attribute{
-			"path": ephemeralschema.StringAttribute{
+			"vault_file": ephemeralschema.StringAttribute{
 				MarkdownDescription: "Path to the ansible-vault encrypted file.",
 				Required:            true,
 			},
@@ -53,7 +76,7 @@ func (e *VaultFileEphemeralResource) Schema(
 				MarkdownDescription: "Vault ID label used with `--vault-id <id>@<vault_password_file>`.",
 				Optional:            true,
 			},
-			"content": ephemeralschema.StringAttribute{
+			"yaml": ephemeralschema.StringAttribute{
 				MarkdownDescription: "Decrypted content of the vault file.",
 				Computed:            true,
 				Sensitive:           true,
@@ -62,24 +85,24 @@ func (e *VaultFileEphemeralResource) Schema(
 	}
 }
 
-func (e *VaultFileEphemeralResource) Open(ctx context.Context, req ephemeral.OpenRequest, resp *ephemeral.OpenResponse) {
-	var config vaultFileEphemeralModel
+func (e *VaultEphemeralResource) Open(ctx context.Context, req ephemeral.OpenRequest, resp *ephemeral.OpenResponse) {
+	var config vaultEphemeralModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	content, diags := runAnsibleVaultView(
+	content, diags := e.runner.View(
 		ctx,
 		config.VaultPasswordFile.ValueString(),
 		config.VaultID.ValueString(),
-		config.Path.ValueString(),
+		config.VaultFile.ValueString(),
 	)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	config.Content = types.StringValue(content)
+	config.Yaml = types.StringValue(content)
 	resp.Diagnostics.Append(resp.Result.Set(ctx, &config)...)
 }

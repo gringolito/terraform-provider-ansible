@@ -1,5 +1,5 @@
-ephemeral "ansible_vault_file" "secret" {
-  path               = "${path.module}/secrets/db_password.yml"
+ephemeral "ansible_vault" "secret" {
+  vault_file          = "${path.module}/secrets/db_password.yml"
   vault_password_file = "${path.module}/.vault_pass"
 }
 
@@ -7,5 +7,5 @@ ephemeral "ansible_vault_file" "secret" {
 # Requires Terraform 1.10 or later.
 resource "aws_secretsmanager_secret_version" "db" {
   secret_id     = aws_secretsmanager_secret.db.id
-  secret_string = ephemeral.ansible_vault_file.secret.content
+  secret_string = ephemeral.ansible_vault.secret.yaml
 }

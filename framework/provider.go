@@ -47,23 +47,23 @@ func (f *fwprovider) Configure(
 ) {
 	// Provider's parsed configuration (its instance state) is available through the primary provider's Meta() method.
 	v := f.Primary.Meta()
-	response.DataSourceData = v
+	response.DataSourceData = DefaultVaultRunner
+	response.EphemeralResourceData = DefaultVaultRunner
 	response.ResourceData = v
-	response.EphemeralResourceData = v
 	response.ActionData = v
 }
 
 func (f *fwprovider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewInventoryDataSource,
-		NewVaultFileDataSource,
+		NewVaultDataSource,
 		NewVaultStringDataSource,
 	}
 }
 
 func (f *fwprovider) EphemeralResources(_ context.Context) []func() ephemeral.EphemeralResource {
 	return []func() ephemeral.EphemeralResource{
-		NewVaultFileEphemeralResource,
+		NewVaultEphemeralResource,
 		NewVaultStringEphemeralResource,
 	}
 }

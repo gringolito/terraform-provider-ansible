@@ -60,6 +60,39 @@ data "ansible_vault_string" "test" {
 	})
 }
 
+func TestVaultStringDataSource_withVaultPassword(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: ansibleVaultProviderFactories(okRunner("supersecret")),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+data "ansible_vault_string" "test" {
+  content        = "$ANSIBLE_VAULT;1.1;AES256\nfakedata"
+  vault_password = "mypassword"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("data.ansible_vault_string.test", "plaintext", "supersecret"),
+				),
+			},
+		},
+	})
+}
+
+func TestVaultStringDataSource_missingBothPasswordOptions(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: ansibleVaultProviderFactories(okRunner("")),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+data "ansible_vault_string" "test" {
+  content = "$ANSIBLE_VAULT;1.1;AES256\nfakedata"
+}`,
+				ExpectError: regexp.MustCompile(`Invalid Attribute Combination`),
+			},
+		},
+	})
+}
+
 func TestVaultStringDataSource_computedPlaintextWithInputsInState(t *testing.T) {
 	// Terraform always writes config attributes into data source state (it uses them
 	// to detect when a re-read is needed). Only `plaintext` is provider-computed; the

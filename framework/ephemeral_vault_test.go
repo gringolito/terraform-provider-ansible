@@ -62,6 +62,55 @@ resource "terraform_data" "check" {
 	})
 }
 
+func TestVaultEphemeralResource_withVaultPassword(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: ansibleVaultProviderFactories(okRunner("hello: world\n")),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+ephemeral "ansible_vault" "test" {
+  vault_file     = "/fake/vault.yml"
+  vault_password = "mypassword"
+}
+
+resource "terraform_data" "check" {
+  lifecycle {
+    precondition {
+      condition     = ephemeral.ansible_vault.test.yaml == "hello: world\n"
+      error_message = "Unexpected content from vault file ephemeral resource with vault_password"
+    }
+  }
+}`,
+				Check: resource.TestCheckResourceAttrSet("terraform_data.check", "id"),
+			},
+		},
+	})
+}
+
+func TestVaultEphemeralResource_missingBothPasswordOptions(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: ansibleVaultProviderFactories(okRunner("")),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+ephemeral "ansible_vault" "test" {
+  vault_file = "/fake/vault.yml"
+}
+
+resource "terraform_data" "check" {
+  lifecycle {
+    precondition {
+      condition     = ephemeral.ansible_vault.test.yaml != ""
+      error_message = "Should not reach here"
+    }
+  }
+}`,
+				ExpectError: regexp.MustCompile(`Invalid Attribute Combination`),
+			},
+		},
+	})
+}
+
 func TestVaultEphemeralResource_propagatesDecryptError(t *testing.T) {
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: ansibleVaultProviderFactories(errRunner("ansible-vault view failed", "ERROR! Decryption failed (no vault secrets would decrypt)")),

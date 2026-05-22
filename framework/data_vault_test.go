@@ -60,6 +60,39 @@ data "ansible_vault" "test" {
 	})
 }
 
+func TestVaultDataSource_withVaultPassword(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: ansibleVaultProviderFactories(okRunner("hello: world\n")),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+data "ansible_vault" "test" {
+  vault_file     = "/fake/vault.yml"
+  vault_password = "mypassword"
+}`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("data.ansible_vault.test", "yaml", "hello: world\n"),
+				),
+			},
+		},
+	})
+}
+
+func TestVaultDataSource_missingBothPasswordOptions(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: ansibleVaultProviderFactories(okRunner("")),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+data "ansible_vault" "test" {
+  vault_file = "/fake/vault.yml"
+}`,
+				ExpectError: regexp.MustCompile(`Invalid Attribute Combination`),
+			},
+		},
+	})
+}
+
 func TestVaultDataSource_computedYamlWithInputsInState(t *testing.T) {
 	// Terraform always writes config attributes into data source state (it uses them
 	// to detect when a re-read is needed). Only `yaml` is provider-computed; the

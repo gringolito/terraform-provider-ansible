@@ -60,3 +60,31 @@ func decryptVaultStringWith(ctx context.Context, encryptedContent, passwordFile,
 
 	return runner.View(ctx, passwordFile, vaultID, tmpFile.Name())
 }
+
+// resolvePasswordFile returns the effective password file path from either an inline vault_password
+// string or an explicit vault_password_file path.
+// When vault_password is used, it is written to a temp file; the caller must invoke the returned
+// cleanup func when done.
+func resolvePasswordFile(vaultPassword, vaultPasswordFile string) (string, func(), diag.Diagnostics) {
+	var diags diag.Diagnostics
+	noop := func() {}
+
+	if vaultPassword != "" {
+		tmpFile, err := os.CreateTemp("", "ansible-vault-pass-*")
+		if err != nil {
+			diags.AddError("Failed to create temp password file", err.Error())
+			return "", noop, diags
+		}
+		if _, err := tmpFile.WriteString(vaultPassword); err != nil {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+			diags.AddError("Failed to write vault password to temp file", err.Error())
+			return "", noop, diags
+		}
+		tmpFile.Close()
+		path := tmpFile.Name()
+		return path, func() { os.Remove(path) }, diags
+	}
+
+	return vaultPasswordFile, noop, diags
+}

@@ -87,3 +87,45 @@ func TestDecryptVaultStringWith_propagatesRunnerError(t *testing.T) {
 	assert.True(t, diags.HasError())
 	assert.Equal(t, "decrypt failed", diags[0].Summary())
 }
+
+// --- resolvePasswordFile ---
+
+func TestResolvePasswordFile_withVaultPasswordFile_returnsPathDirectly(t *testing.T) {
+	path, cleanup, diags := resolvePasswordFile("", "/my/pass")
+	defer cleanup()
+	assert.False(t, diags.HasError())
+	assert.Equal(t, "/my/pass", path)
+}
+
+func TestResolvePasswordFile_withVaultPassword_writesTempFile(t *testing.T) {
+	path, cleanup, diags := resolvePasswordFile("mypassword", "")
+	defer cleanup()
+	require.False(t, diags.HasError())
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "mypassword", string(content))
+}
+
+func TestResolvePasswordFile_withVaultPassword_cleanupRemovesTempFile(t *testing.T) {
+	path, cleanup, diags := resolvePasswordFile("mypassword", "")
+	require.False(t, diags.HasError())
+
+	cleanup()
+
+	_, err := os.Stat(path)
+	assert.True(t, os.IsNotExist(err), "temp file %q should have been removed", path)
+}
+
+func TestResolvePasswordFile_bothSet_vaultPasswordTakesPrecedence(t *testing.T) {
+	path, cleanup, diags := resolvePasswordFile("inlinepass", "/file/pass")
+	defer cleanup()
+	require.False(t, diags.HasError())
+
+	// Should have written a temp file, not returned the file path directly.
+	assert.NotEqual(t, "/file/pass", path)
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "inlinepass", string(content))
+}

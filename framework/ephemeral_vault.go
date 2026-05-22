@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	ephemeralschema "github.com/hashicorp/terraform-plugin-framework/ephemeral/schema"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -49,6 +52,7 @@ func (e *VaultEphemeralResource) Metadata(
 
 type vaultEphemeralModel struct {
 	VaultFile         types.String `tfsdk:"vault_file"`
+	VaultPassword     types.String `tfsdk:"vault_password"`
 	VaultPasswordFile types.String `tfsdk:"vault_password_file"`
 	VaultID           types.String `tfsdk:"vault_id"`
 	Yaml              types.String `tfsdk:"yaml"`
@@ -67,10 +71,23 @@ func (e *VaultEphemeralResource) Schema(
 				MarkdownDescription: "Path to the ansible-vault encrypted file.",
 				Required:            true,
 			},
+			"vault_password": ephemeralschema.StringAttribute{
+				MarkdownDescription: "Vault password as a plain string.",
+				Optional:            true,
+				Sensitive:           true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("vault_password_file")),
+					stringvalidator.AtLeastOneOf(path.MatchRoot("vault_password"), path.MatchRoot("vault_password_file")),
+				},
+			},
 			"vault_password_file": ephemeralschema.StringAttribute{
 				MarkdownDescription: "Path to the file containing the vault password.",
-				Required:            true,
+				Optional:            true,
 				Sensitive:           true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("vault_password")),
+					stringvalidator.AtLeastOneOf(path.MatchRoot("vault_password"), path.MatchRoot("vault_password_file")),
+				},
 			},
 			"vault_id": ephemeralschema.StringAttribute{
 				MarkdownDescription: "Vault ID label used with `--vault-id <id>@<vault_password_file>`.",
@@ -92,12 +109,14 @@ func (e *VaultEphemeralResource) Open(ctx context.Context, req ephemeral.OpenReq
 		return
 	}
 
-	content, diags := e.runner.View(
-		ctx,
-		config.VaultPasswordFile.ValueString(),
-		config.VaultID.ValueString(),
-		config.VaultFile.ValueString(),
-	)
+	passwordFile, cleanup, diags := resolvePasswordFile(config.VaultPassword.ValueString(), config.VaultPasswordFile.ValueString())
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	defer cleanup()
+
+	content, diags := e.runner.View(ctx, passwordFile, config.VaultID.ValueString(), config.VaultFile.ValueString())
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return

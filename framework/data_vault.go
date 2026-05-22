@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -49,6 +52,7 @@ func (d *VaultDataSource) Metadata(
 
 type vaultConfigModel struct {
 	VaultFile         types.String `tfsdk:"vault_file"`
+	VaultPassword     types.String `tfsdk:"vault_password"`
 	VaultPasswordFile types.String `tfsdk:"vault_password_file"`
 	VaultID           types.String `tfsdk:"vault_id"`
 	Yaml              types.String `tfsdk:"yaml"`
@@ -66,10 +70,23 @@ func (d *VaultDataSource) Schema(
 				MarkdownDescription: "Path to the ansible-vault encrypted file.",
 				Required:            true,
 			},
+			"vault_password": schema.StringAttribute{
+				MarkdownDescription: "Vault password as a plain string.",
+				Optional:            true,
+				Sensitive:           true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("vault_password_file")),
+					stringvalidator.AtLeastOneOf(path.MatchRoot("vault_password"), path.MatchRoot("vault_password_file")),
+				},
+			},
 			"vault_password_file": schema.StringAttribute{
 				MarkdownDescription: "Path to the file containing the vault password.",
-				Required:            true,
+				Optional:            true,
 				Sensitive:           true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("vault_password")),
+					stringvalidator.AtLeastOneOf(path.MatchRoot("vault_password"), path.MatchRoot("vault_password_file")),
+				},
 			},
 			"vault_id": schema.StringAttribute{
 				MarkdownDescription: "Vault ID label used with `--vault-id <id>@<vault_password_file>`.",
@@ -91,12 +108,14 @@ func (d *VaultDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	yaml, diags := d.runner.View(
-		ctx,
-		config.VaultPasswordFile.ValueString(),
-		config.VaultID.ValueString(),
-		config.VaultFile.ValueString(),
-	)
+	passwordFile, cleanup, diags := resolvePasswordFile(config.VaultPassword.ValueString(), config.VaultPasswordFile.ValueString())
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	defer cleanup()
+
+	yaml, diags := d.runner.View(ctx, passwordFile, config.VaultID.ValueString(), config.VaultFile.ValueString())
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return

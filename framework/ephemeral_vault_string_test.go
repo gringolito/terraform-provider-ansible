@@ -62,6 +62,55 @@ resource "terraform_data" "check" {
 	})
 }
 
+func TestVaultStringEphemeralResource_withVaultPassword(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: ansibleVaultProviderFactories(okRunner("supersecret")),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+ephemeral "ansible_vault_string" "test" {
+  content        = "$ANSIBLE_VAULT;1.1;AES256\nfakedata"
+  vault_password = "mypassword"
+}
+
+resource "terraform_data" "check" {
+  lifecycle {
+    precondition {
+      condition     = ephemeral.ansible_vault_string.test.plaintext == "supersecret"
+      error_message = "Unexpected plaintext from vault string ephemeral resource with vault_password"
+    }
+  }
+}`,
+				Check: resource.TestCheckResourceAttrSet("terraform_data.check", "id"),
+			},
+		},
+	})
+}
+
+func TestVaultStringEphemeralResource_missingBothPasswordOptions(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: ansibleVaultProviderFactories(okRunner("")),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+ephemeral "ansible_vault_string" "test" {
+  content = "$ANSIBLE_VAULT;1.1;AES256\nfakedata"
+}
+
+resource "terraform_data" "check" {
+  lifecycle {
+    precondition {
+      condition     = ephemeral.ansible_vault_string.test.plaintext != ""
+      error_message = "Should not reach here"
+    }
+  }
+}`,
+				ExpectError: regexp.MustCompile(`Invalid Attribute Combination`),
+			},
+		},
+	})
+}
+
 func TestVaultStringEphemeralResource_propagatesDecryptError(t *testing.T) {
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: ansibleVaultProviderFactories(errRunner("ansible-vault view failed", "ERROR! Decryption failed (no vault secrets would decrypt)")),

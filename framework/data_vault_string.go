@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -49,6 +52,7 @@ func (d *VaultStringDataSource) Metadata(
 
 type vaultStringConfigModel struct {
 	Content           types.String `tfsdk:"content"`
+	VaultPassword     types.String `tfsdk:"vault_password"`
 	VaultPasswordFile types.String `tfsdk:"vault_password_file"`
 	VaultID           types.String `tfsdk:"vault_id"`
 	Plaintext         types.String `tfsdk:"plaintext"`
@@ -66,10 +70,23 @@ func (d *VaultStringDataSource) Schema(
 				MarkdownDescription: "The ansible-vault encrypted string (begins with `$ANSIBLE_VAULT;...`).",
 				Required:            true,
 			},
+			"vault_password": schema.StringAttribute{
+				MarkdownDescription: "Vault password as a plain string.",
+				Optional:            true,
+				Sensitive:           true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("vault_password_file")),
+					stringvalidator.AtLeastOneOf(path.MatchRoot("vault_password"), path.MatchRoot("vault_password_file")),
+				},
+			},
 			"vault_password_file": schema.StringAttribute{
 				MarkdownDescription: "Path to the file containing the vault password.",
-				Required:            true,
+				Optional:            true,
 				Sensitive:           true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("vault_password")),
+					stringvalidator.AtLeastOneOf(path.MatchRoot("vault_password"), path.MatchRoot("vault_password_file")),
+				},
 			},
 			"vault_id": schema.StringAttribute{
 				MarkdownDescription: "Vault ID label used with `--vault-id <id>@<vault_password_file>`.",
@@ -91,7 +108,14 @@ func (d *VaultStringDataSource) Read(ctx context.Context, req datasource.ReadReq
 		return
 	}
 
-	plaintext, diags := decryptVaultStringWith(ctx, config.Content.ValueString(), config.VaultPasswordFile.ValueString(), config.VaultID.ValueString(), d.runner)
+	passwordFile, cleanup, diags := resolvePasswordFile(config.VaultPassword.ValueString(), config.VaultPasswordFile.ValueString())
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	defer cleanup()
+
+	plaintext, diags := decryptVaultStringWith(ctx, config.Content.ValueString(), passwordFile, config.VaultID.ValueString(), d.runner)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return

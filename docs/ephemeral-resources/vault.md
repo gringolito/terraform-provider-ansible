@@ -1,24 +1,31 @@
 ---
 page_title: "ansible_vault EphemeralResource - terraform-provider-ansible"
 subcategory: ""
-description: |-
-  Decrypts an ansible-vault encrypted file without writing anything to state.
+description: Decrypts an ansible-vault encrypted file.
 ---
 
 # ansible_vault (EphemeralResource)
 
-Decrypts an ansible-vault encrypted file and exposes the plaintext content as a sensitive computed attribute. Nothing is written to Terraform state.
+Decrypts an ansible-vault encrypted file and exposes the plaintext content as a sensitive computed attribute.
 
-Requires Terraform 1.10 or later. Ephemeral resources are ideal for secrets that should never appear in state or plan output.
+The vault password can be supplied as a file path via `vault_password_file` or as an inline string via `vault_password`. Exactly one of the two must be specified.
 
 ## Example Usage
+
 ```terraform
+# Using a password file
 ephemeral "ansible_vault" "secret" {
   vault_file          = "${path.module}/secrets/db_password.yml"
   vault_password_file = "${path.module}/.vault_pass"
 }
 
-# Use the decrypted content in another resource without it appearing in state.
+# Using an inline password (e.g. sourced from a variable or secret manager)
+ephemeral "ansible_vault" "secret" {
+  vault_file     = "${path.module}/secrets/db_password.yml"
+  vault_password = var.vault_password
+}
+
+# Use the decrypted content in another resource.
 resource "aws_secretsmanager_secret_version" "db" {
   secret_id     = aws_secretsmanager_secret.db.id
   secret_string = ephemeral.ansible_vault.secret.yaml
@@ -31,11 +38,12 @@ resource "aws_secretsmanager_secret_version" "db" {
 ### Required
 
 - `vault_file` (String) Path to the ansible-vault encrypted file.
-- `vault_password_file` (String, Sensitive) Path to the file containing the vault password.
 
 ### Optional
 
-- `vault_id` (String) Vault ID label used with `--vault-id <id>@<vault_password_file>`.
+- `vault_password` (String, Sensitive) Vault password. Mutually exclusive with `vault_password_file`.
+- `vault_password_file` (String, Sensitive) Path to vault password file. Mutually exclusive with `vault_password`.
+- `vault_id` (String) ID of the encrypted vault file.
 
 ### Read-Only
 

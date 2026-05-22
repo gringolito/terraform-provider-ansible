@@ -1,18 +1,21 @@
 ---
 page_title: "ansible_vault_string DataSource - terraform-provider-ansible"
 subcategory: ""
-description: |-
-  Decrypts an ansible-vault encrypted string and exposes its plaintext.
+description: Decrypts an ansible-vault encrypted string and exposes its plaintext.
 ---
 
 # ansible_vault_string (DataSource)
 
 Decrypts an inline ansible-vault encrypted string (the `$ANSIBLE_VAULT;...` block) and exposes the plaintext as a sensitive computed attribute.
 
-Only the decrypted `plaintext` is stored in Terraform state. The `content` and `vault_password_file` attributes are read from configuration on every plan/apply and are never persisted to state. For workflows where even the decrypted value must not appear in state, use the [`ansible_vault_string` ephemeral resource](../ephemeral-resources/vault_string.md) instead (requires Terraform 1.10+).
+The `content` and password attributes are read from configuration on every plan/apply. For workflows where even the decrypted value must not appear in state, use the [`ansible_vault_string` ephemeral resource](../ephemeral-resources/vault_string.md) instead (requires Terraform 1.10+).
+
+The vault password can be supplied as a file path via `vault_password_file` or as an inline string via `vault_password`. Exactly one of the two must be specified.
 
 ## Example Usage
+
 ```terraform
+# Using a password file
 data "ansible_vault_string" "db_password" {
   content = <<-EOT
     $ANSIBLE_VAULT;1.1;AES256
@@ -20,6 +23,16 @@ data "ansible_vault_string" "db_password" {
     3562396563643434386566616637653564623436623437386237613438386231383164
     EOT
   vault_password_file = "${path.module}/.vault_pass"
+}
+
+# Using an inline password (e.g. sourced from a variable or secret manager)
+data "ansible_vault_string" "db_password" {
+  content = <<-EOT
+    $ANSIBLE_VAULT;1.1;AES256
+    66386439653236336462626566653063336164663966303231363934653561363964613
+    3562396563643434386566616637653564623436623437386237613438386231383164
+    EOT
+  vault_password = var.vault_password
 }
 
 output "db_password" {
@@ -34,12 +47,13 @@ output "db_password" {
 ### Required
 
 - `content` (String) The ansible-vault encrypted string (begins with `$ANSIBLE_VAULT;...`).
-- `vault_password_file` (String, Sensitive) Path to the file containing the vault password.
 
 ### Optional
 
-- `vault_id` (String) Vault ID label used with `--vault-id <id>@<vault_password_file>`.
+- `vault_password` (String, Sensitive) Vault password. Mutually exclusive with `vault_password_file`.
+- `vault_password_file` (String, Sensitive) Path to vault password file. Mutually exclusive with `vault_password`.
+- `vault_id` (String) ID of the encrypted vault file.
 
 ### Read-Only
 
-- `plaintext` (String, Sensitive) Decrypted plaintext of the vault string.
+- `plaintext` (String, Sensitive) Decrypted vault string.

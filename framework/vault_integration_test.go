@@ -345,7 +345,7 @@ func TestAccRunAnsibleVaultDecrypt_wrongPassword(t *testing.T) {
 	require.NoError(t, os.WriteFile(wrongPass, []byte("not-the-password"), 0o600))
 
 	_, diags := framework.DefaultVaultRunner.Decrypt(context.Background(), wrongPass, "", encrypted)
-	assert.True(t, diags.HasError())
+	require.True(t, diags.HasError())
 	assert.Equal(t, "ansible-vault decrypt failed", diags[0].Summary())
 }
 
@@ -374,6 +374,6 @@ func TestAccRunAnsibleVaultView_wrongPassword(t *testing.T) {
 	require.NoError(t, os.WriteFile(wrongPass, []byte("not-the-password"), 0o600))
 
 	_, diags := framework.DefaultVaultRunner.View(context.Background(), wrongPass, "", vaultFile)
-	assert.True(t, diags.HasError())
+	require.True(t, diags.HasError())
 	assert.Equal(t, "ansible-vault view failed", diags[0].Summary())
 }

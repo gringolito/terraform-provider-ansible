@@ -1,15 +1,14 @@
 ---
 page_title: "ansible_vault_string DataSource - terraform-provider-ansible"
 subcategory: ""
-description: |-
-  Decrypts an ansible-vault encrypted string and exposes its plaintext.
+description: Decrypts an ansible-vault encrypted string and exposes its plaintext.
 ---
 
 # ansible_vault_string (DataSource)
 
 Decrypts an inline ansible-vault encrypted string (the `$ANSIBLE_VAULT;...` block) and exposes the plaintext as a sensitive computed attribute.
 
-Only the decrypted `plaintext` is stored in Terraform state. The `content` and password attributes are read from configuration on every plan/apply and are never persisted to state. For workflows where even the decrypted value must not appear in state, use the [`ansible_vault_string` ephemeral resource](../ephemeral-resources/vault_string.md) instead (requires Terraform 1.10+).
+The `content` and password attributes are read from configuration on every plan/apply. For workflows where even the decrypted value must not appear in state, use the [`ansible_vault_string` ephemeral resource](../ephemeral-resources/vault_string.md) instead (requires Terraform 1.10+).
 
 The vault password can be supplied as a file path via `vault_password_file` or as an inline string via `vault_password`. Exactly one of the two must be specified.
 
@@ -51,10 +50,10 @@ output "db_password" {
 
 ### Optional
 
-- `vault_password` (String, Sensitive) Vault password as a plain string. Mutually exclusive with `vault_password_file`.
-- `vault_password_file` (String, Sensitive) Path to the file containing the vault password. Mutually exclusive with `vault_password`.
-- `vault_id` (String) Vault ID label used with `--vault-id <id>@<vault_password_file>`.
+- `vault_password` (String, Sensitive) Vault password. Mutually exclusive with `vault_password_file`.
+- `vault_password_file` (String, Sensitive) Path to vault password file. Mutually exclusive with `vault_password`.
+- `vault_id` (String) ID of the encrypted vault file.
 
 ### Read-Only
 
-- `plaintext` (String, Sensitive) Decrypted plaintext of the vault string.
+- `plaintext` (String, Sensitive) Decrypted vault string.

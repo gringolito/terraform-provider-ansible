@@ -84,6 +84,10 @@ func (f vaultRunnerFunc) View(ctx context.Context, passwordFile, vaultID, vaultF
 	return f(ctx, passwordFile, vaultID, vaultFile)
 }
 
+func (f vaultRunnerFunc) Decrypt(ctx context.Context, passwordFile, vaultID, content string) (string, diag.Diagnostics) {
+	return f(ctx, passwordFile, vaultID, content)
+}
+
 // okRunner returns a VaultRunner that always succeeds with the given plaintext.
 func okRunner(plaintext string) framework.VaultRunner {
 	return vaultRunnerFunc(func(_ context.Context, _, _, _ string) (string, diag.Diagnostics) {

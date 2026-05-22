@@ -109,7 +109,7 @@ func (e *VaultEphemeralResource) Open(ctx context.Context, req ephemeral.OpenReq
 		return
 	}
 
-	passwordFile, cleanup, diags := resolvePasswordFile(config.VaultPassword.ValueString(), config.VaultPasswordFile.ValueString())
+	passwordFile, cleanup, diags := ResolvePasswordFile(config.VaultPassword.ValueString(), config.VaultPasswordFile.ValueString())
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return

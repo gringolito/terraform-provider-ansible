@@ -3,6 +3,7 @@
 package framework_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/ansible/terraform-provider-ansible/framework"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -245,7 +248,7 @@ data "ansible_vault_string" "test" {
   content             = %q
   vault_password_file = %q
 }`, encrypted, wrongPass),
-				ExpectError: regexp.MustCompile(`ansible-vault view failed`),
+				ExpectError: regexp.MustCompile(`ansible-vault decrypt failed`),
 			},
 		},
 	})
@@ -309,4 +312,68 @@ resource "terraform_data" "check" {
 			},
 		},
 	})
+}
+
+// --- Direct runner tests ---
+// These test the runner functions in isolation so failures point directly at
+// the subprocess layer, without going through the full Terraform provider stack.
+
+func TestAccRunAnsibleVaultDecrypt_basic(t *testing.T) {
+	dir, passFile := integrationSetup(t)
+	encrypted := encryptString(t, dir, passFile, integrationPlaintext)
+
+	plaintext, diags := framework.DefaultVaultRunner.Decrypt(context.Background(), passFile, "", encrypted)
+	require.False(t, diags.HasError())
+	assert.Equal(t, integrationPlaintext, plaintext)
+	assert.NotContains(t, plaintext, "Decryption successful")
+}
+
+func TestAccRunAnsibleVaultDecrypt_withVaultID(t *testing.T) {
+	dir, passFile := integrationSetup(t)
+	encrypted := encryptStringWithID(t, dir, passFile, integrationVaultID, integrationPlaintext)
+
+	plaintext, diags := framework.DefaultVaultRunner.Decrypt(context.Background(), passFile, integrationVaultID, encrypted)
+	require.False(t, diags.HasError())
+	assert.Equal(t, integrationPlaintext, plaintext)
+	assert.NotContains(t, plaintext, "Decryption successful")
+}
+
+func TestAccRunAnsibleVaultDecrypt_wrongPassword(t *testing.T) {
+	dir, passFile := integrationSetup(t)
+	encrypted := encryptString(t, dir, passFile, integrationPlaintext)
+	wrongPass := filepath.Join(dir, "wrong_pass")
+	require.NoError(t, os.WriteFile(wrongPass, []byte("not-the-password"), 0o600))
+
+	_, diags := framework.DefaultVaultRunner.Decrypt(context.Background(), wrongPass, "", encrypted)
+	assert.True(t, diags.HasError())
+	assert.Equal(t, "ansible-vault decrypt failed", diags[0].Summary())
+}
+
+func TestAccRunAnsibleVaultView_basic(t *testing.T) {
+	dir, passFile := integrationSetup(t)
+	vaultFile := encryptFile(t, dir, passFile, "secret.yml", integrationPlaintext)
+
+	plaintext, diags := framework.DefaultVaultRunner.View(context.Background(), passFile, "", vaultFile)
+	require.False(t, diags.HasError())
+	assert.Equal(t, integrationPlaintext, plaintext)
+}
+
+func TestAccRunAnsibleVaultView_withVaultID(t *testing.T) {
+	dir, passFile := integrationSetup(t)
+	vaultFile := encryptFileWithID(t, dir, passFile, integrationVaultID, "secret_id.yml", integrationPlaintext)
+
+	plaintext, diags := framework.DefaultVaultRunner.View(context.Background(), passFile, integrationVaultID, vaultFile)
+	require.False(t, diags.HasError())
+	assert.Equal(t, integrationPlaintext, plaintext)
+}
+
+func TestAccRunAnsibleVaultView_wrongPassword(t *testing.T) {
+	dir, passFile := integrationSetup(t)
+	vaultFile := encryptFile(t, dir, passFile, "secret_bad.yml", integrationPlaintext)
+	wrongPass := filepath.Join(dir, "wrong_pass")
+	require.NoError(t, os.WriteFile(wrongPass, []byte("not-the-password"), 0o600))
+
+	_, diags := framework.DefaultVaultRunner.View(context.Background(), wrongPass, "", vaultFile)
+	assert.True(t, diags.HasError())
+	assert.Equal(t, "ansible-vault view failed", diags[0].Summary())
 }

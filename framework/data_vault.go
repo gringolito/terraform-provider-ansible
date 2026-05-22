@@ -108,7 +108,7 @@ func (d *VaultDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	passwordFile, cleanup, diags := resolvePasswordFile(config.VaultPassword.ValueString(), config.VaultPasswordFile.ValueString())
+	passwordFile, cleanup, diags := ResolvePasswordFile(config.VaultPassword.ValueString(), config.VaultPasswordFile.ValueString())
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return

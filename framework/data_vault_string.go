@@ -108,14 +108,14 @@ func (d *VaultStringDataSource) Read(ctx context.Context, req datasource.ReadReq
 		return
 	}
 
-	passwordFile, cleanup, diags := resolvePasswordFile(config.VaultPassword.ValueString(), config.VaultPasswordFile.ValueString())
+	passwordFile, cleanup, diags := ResolvePasswordFile(config.VaultPassword.ValueString(), config.VaultPasswordFile.ValueString())
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	defer cleanup()
 
-	plaintext, diags := decryptVaultStringWith(ctx, config.Content.ValueString(), passwordFile, config.VaultID.ValueString(), d.runner)
+	plaintext, diags := d.runner.Decrypt(ctx, passwordFile, config.VaultID.ValueString(), config.Content.ValueString())
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return

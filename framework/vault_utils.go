@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 )
@@ -11,6 +12,7 @@ import (
 // VaultRunner abstracts the ansible-vault invocation so tests can inject a mock.
 type VaultRunner interface {
 	View(ctx context.Context, passwordFile, vaultID, vaultFile string) (string, diag.Diagnostics)
+	Decrypt(ctx context.Context, passwordFile, vaultID, encryptedContent string) (string, diag.Diagnostics)
 }
 
 type ansibleVaultRunner struct{}
@@ -20,52 +22,59 @@ var DefaultVaultRunner VaultRunner = &ansibleVaultRunner{}
 
 func (r *ansibleVaultRunner) View(ctx context.Context, passwordFile, vaultID, vaultFile string) (string, diag.Diagnostics) {
 	var diags diag.Diagnostics
+	var stderr strings.Builder
 
-	args := buildVaultViewArgs(passwordFile, vaultID, vaultFile)
-	out, err := exec.CommandContext(ctx, "ansible-vault", args...).CombinedOutput()
+	args := BuildVaultViewArgs(passwordFile, vaultID, vaultFile)
+	cmd := exec.CommandContext(ctx, "ansible-vault", args...)
+	cmd.Stderr = &stderr
+	stdout, err := cmd.Output()
 	if err != nil {
-		diags.AddError("ansible-vault view failed", string(out))
+		diags.AddError("ansible-vault view failed", stderr.String())
 		return "", diags
 	}
 
-	return string(out), diags
+	return string(stdout), diags
 }
 
-// buildVaultViewArgs returns the ansible-vault view arguments for the given inputs.
+func (r *ansibleVaultRunner) Decrypt(ctx context.Context, passwordFile, vaultID, encryptedContent string) (string, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	var stderr strings.Builder
+
+	args := BuildVaultDecryptArgs(passwordFile, vaultID)
+	cmd := exec.CommandContext(ctx, "ansible-vault", args...)
+	cmd.Stdin = strings.NewReader(encryptedContent)
+	cmd.Stderr = &stderr
+	stdout, err := cmd.Output()
+	if err != nil {
+		diags.AddError("ansible-vault decrypt failed", stderr.String())
+		return "", diags
+	}
+
+	return string(stdout), diags
+}
+
+// BuildVaultViewArgs returns the ansible-vault view arguments for the given inputs.
 // When vaultID is non-empty it uses --vault-id <id>@<passwordFile>; otherwise --vault-password-file.
-func buildVaultViewArgs(passwordFile, vaultID, vaultFile string) []string {
+func BuildVaultViewArgs(passwordFile, vaultID, vaultFile string) []string {
 	if vaultID != "" {
 		return []string{"view", "--vault-id", vaultID + "@" + passwordFile, vaultFile}
 	}
 	return []string{"view", "--vault-password-file", passwordFile, vaultFile}
 }
 
-// decryptVaultStringWith writes the encrypted vault string to a temp file and decrypts it via runner.
-func decryptVaultStringWith(ctx context.Context, encryptedContent, passwordFile, vaultID string, runner VaultRunner) (string, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	tmpFile, err := os.CreateTemp("", "ansible-vault-string-*")
-	if err != nil {
-		diags.AddError("Failed to create temp file", err.Error())
-		return "", diags
+// BuildVaultDecryptArgs returns the ansible-vault decrypt arguments that read from stdin and write to stdout.
+func BuildVaultDecryptArgs(passwordFile, vaultID string) []string {
+	if vaultID != "" {
+		return []string{"decrypt", "--vault-id", vaultID + "@" + passwordFile, "--output=-", "-"}
 	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.WriteString(encryptedContent); err != nil {
-		tmpFile.Close()
-		diags.AddError("Failed to write vault string to temp file", err.Error())
-		return "", diags
-	}
-	tmpFile.Close()
-
-	return runner.View(ctx, passwordFile, vaultID, tmpFile.Name())
+	return []string{"decrypt", "--vault-password-file", passwordFile, "--output=-", "-"}
 }
 
-// resolvePasswordFile returns the effective password file path from either an inline vault_password
+// ResolvePasswordFile returns the effective password file path from either an inline vault_password
 // string or an explicit vault_password_file path.
 // When vault_password is used, it is written to a temp file; the caller must invoke the returned
 // cleanup func when done.
-func resolvePasswordFile(vaultPassword, vaultPasswordFile string) (string, func(), diag.Diagnostics) {
+func ResolvePasswordFile(vaultPassword, vaultPasswordFile string) (string, func(), diag.Diagnostics) {
 	var diags diag.Diagnostics
 	noop := func() {}
 

@@ -37,7 +37,6 @@ type vaultStringConfigModel struct {
 	Plaintext         types.String `tfsdk:"plaintext"`
 }
 
-
 func (d *VaultStringDataSource) Schema(
 	_ context.Context,
 	_ datasource.SchemaRequest,

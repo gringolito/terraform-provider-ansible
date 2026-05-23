@@ -12,8 +12,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-var _ ephemeral.EphemeralResource = (*VaultEphemeralResource)(nil)
-var _ ephemeral.EphemeralResourceWithConfigure = (*VaultEphemeralResource)(nil)
+var (
+	_ ephemeral.EphemeralResource              = (*VaultEphemeralResource)(nil)
+	_ ephemeral.EphemeralResourceWithConfigure = (*VaultEphemeralResource)(nil)
+)
 
 type VaultEphemeralResource struct {
 	runner VaultRunner

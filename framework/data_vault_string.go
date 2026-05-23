@@ -12,8 +12,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-var _ datasource.DataSource = (*VaultStringDataSource)(nil)
-var _ datasource.DataSourceWithConfigure = (*VaultStringDataSource)(nil)
+var (
+	_ datasource.DataSource              = (*VaultStringDataSource)(nil)
+	_ datasource.DataSourceWithConfigure = (*VaultStringDataSource)(nil)
+)
 
 type VaultStringDataSource struct {
 	runner VaultRunner

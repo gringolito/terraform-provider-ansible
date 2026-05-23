@@ -1,4 +1,4 @@
-package framework
+package framework //nolint:testpackage
 
 import (
 	"context"
@@ -20,8 +20,10 @@ type testVaultProvider struct {
 	runner vaultRunner
 }
 
-var _ provider.Provider = (*testVaultProvider)(nil)
-var _ provider.ProviderWithEphemeralResources = (*testVaultProvider)(nil)
+var (
+	_ provider.Provider                       = (*testVaultProvider)(nil)
+	_ provider.ProviderWithEphemeralResources = (*testVaultProvider)(nil)
+)
 
 func (p *testVaultProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = "ansible"
@@ -70,11 +72,11 @@ func okRunner(plaintext string) vaultRunner {
 	}
 }
 
-// errRunner returns a vaultRunner that always fails with the given error.
-func errRunner(summary, detail string) vaultRunner {
+// errRunner returns a vaultRunner that always fails with a decryption error.
+func errRunner() vaultRunner {
 	return func(_ context.Context, _, _, _ string) (string, diag.Diagnostics) {
 		var d diag.Diagnostics
-		d.AddError(summary, detail)
+		d.AddError("ansible-vault view failed", "ERROR! Decryption failed (no vault secrets would decrypt)")
 		return "", d
 	}
 }

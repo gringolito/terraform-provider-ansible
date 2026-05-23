@@ -1,4 +1,4 @@
-package framework
+package framework //nolint:testpackage
 
 import (
 	"context"
@@ -13,11 +13,13 @@ import (
 // --- buildVaultViewArgs ---
 
 func TestBuildVaultViewArgs_withoutVaultID(t *testing.T) {
+	t.Parallel()
 	args := buildVaultViewArgs("/tmp/pass", "", "/tmp/secret.yml")
 	assert.Equal(t, []string{"view", "--vault-password-file", "/tmp/pass", "/tmp/secret.yml"}, args)
 }
 
 func TestBuildVaultViewArgs_withVaultID(t *testing.T) {
+	t.Parallel()
 	args := buildVaultViewArgs("/tmp/pass", "myid", "/tmp/secret.yml")
 	assert.Equal(t, []string{"view", "--vault-id", "myid@/tmp/pass", "/tmp/secret.yml"}, args)
 }
@@ -25,11 +27,13 @@ func TestBuildVaultViewArgs_withVaultID(t *testing.T) {
 // --- buildVaultDecryptArgs ---
 
 func TestBuildVaultDecryptArgs_withoutVaultID(t *testing.T) {
+	t.Parallel()
 	args := buildVaultDecryptArgs("/tmp/pass", "")
 	assert.Equal(t, []string{"decrypt", "--vault-password-file", "/tmp/pass", "--output=-", "-"}, args)
 }
 
 func TestBuildVaultDecryptArgs_withVaultID(t *testing.T) {
+	t.Parallel()
 	args := buildVaultDecryptArgs("/tmp/pass", "myid")
 	assert.Equal(t, []string{"decrypt", "--vault-id", "myid@/tmp/pass", "--output=-", "-"}, args)
 }
@@ -37,6 +41,7 @@ func TestBuildVaultDecryptArgs_withVaultID(t *testing.T) {
 // --- decryptVaultStringWith ---
 
 func TestDecryptVaultStringWith_passesEncryptedContentToRunner(t *testing.T) {
+	t.Parallel()
 	const encrypted = "$ANSIBLE_VAULT;1.1;AES256\nfakedata"
 
 	var receivedContent string
@@ -52,6 +57,7 @@ func TestDecryptVaultStringWith_passesEncryptedContentToRunner(t *testing.T) {
 }
 
 func TestDecryptVaultStringWith_forwardsPasswordFileAndVaultID(t *testing.T) {
+	t.Parallel()
 	var gotPass, gotID string
 	runner := func(_ context.Context, passwordFile, vaultID, _ string) (string, diag.Diagnostics) {
 		gotPass = passwordFile
@@ -66,6 +72,7 @@ func TestDecryptVaultStringWith_forwardsPasswordFileAndVaultID(t *testing.T) {
 }
 
 func TestDecryptVaultStringWith_propagatesRunnerError(t *testing.T) {
+	t.Parallel()
 	runner := func(_ context.Context, _, _, _ string) (string, diag.Diagnostics) {
 		var d diag.Diagnostics
 		d.AddError("decrypt failed", "bad password")
@@ -80,6 +87,7 @@ func TestDecryptVaultStringWith_propagatesRunnerError(t *testing.T) {
 // --- resolvePasswordFile ---
 
 func TestResolvePasswordFile_withVaultPasswordFile_returnsPathDirectly(t *testing.T) {
+	t.Parallel()
 	path, cleanup, diags := resolvePasswordFile("", "/my/pass")
 	defer cleanup()
 	assert.False(t, diags.HasError())
@@ -87,6 +95,7 @@ func TestResolvePasswordFile_withVaultPasswordFile_returnsPathDirectly(t *testin
 }
 
 func TestResolvePasswordFile_withVaultPassword_writesTempFile(t *testing.T) {
+	t.Parallel()
 	path, cleanup, diags := resolvePasswordFile("mypassword", "")
 	defer cleanup()
 	require.False(t, diags.HasError())
@@ -97,6 +106,7 @@ func TestResolvePasswordFile_withVaultPassword_writesTempFile(t *testing.T) {
 }
 
 func TestResolvePasswordFile_withVaultPassword_cleanupRemovesTempFile(t *testing.T) {
+	t.Parallel()
 	path, cleanup, diags := resolvePasswordFile("mypassword", "")
 	require.False(t, diags.HasError())
 
@@ -107,6 +117,7 @@ func TestResolvePasswordFile_withVaultPassword_cleanupRemovesTempFile(t *testing
 }
 
 func TestResolvePasswordFile_bothSet_vaultPasswordTakesPrecedence(t *testing.T) {
+	t.Parallel()
 	path, cleanup, diags := resolvePasswordFile("inlinepass", "/file/pass")
 	defer cleanup()
 	require.False(t, diags.HasError())
